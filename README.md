@@ -14,6 +14,6 @@
 
 ###Info
 This project uses the following libraries:
-MQTTDUINO for MQTT communication (INCLUDED IN THE SKETCH!). More info at https://github.com/Suxsem/Mqttduino
-DHT for DHTxx sensor (standard version in library folder). More info at http://playground.arduino.cc/Main/DHTLib
-SimpleTimer for timed events (CUSTOM VERSION in library folder). More info at https://github.com/jfturcot/SimpleTimer
+- MQTTDUINO for MQTT communication (INCLUDED IN THE SKETCH!). More info at https://github.com/Suxsem/Mqttduino
+- DHT for DHTxx sensor (standard version in library folder). More info at http://playground.arduino.cc/Main/DHTLib
+- SimpleTimer for timed events (CUSTOM VERSION in library folder). More info at https://github.com/jfturcot/SimpleTimer
