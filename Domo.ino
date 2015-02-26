@@ -25,7 +25,6 @@
 #define SECOND 1000000
 
 #define rumorePin 2
-#define resetPin 3
 #define buzzPin 4
 #define alarmPin 5
 #define echoPin 6
@@ -37,6 +36,7 @@
 #define triggerPin 12
 #define photoPin A0
 #define audioPin A1
+#define resetPin A5
 
 dht DHT;
 SimpleTimer timer;
