@@ -13,4 +13,7 @@
 - Enjoy Domo
 
 ###Info
-This project uses another library for MQTT communication. You find more at https://github.com/Suxsem/Mqttduino
+This project uses the following libraries:
+MQTTDUINO for MQTT communication (INCLUDED IN THE SKETCH!). More info at https://github.com/Suxsem/Mqttduino
+DHT for DHTxx sensor (standard version in library folder). More info at http://playground.arduino.cc/Main/DHTLib
+SimpleTimer for timed events (CUSTOM VERSION in library folder). More info at https://github.com/jfturcot/SimpleTimer
