@@ -1,9 +1,9 @@
 #include <dht.h>
 #include <SimpleTimer.h>
 
-#define DISTANZA_RILEVAZIONE 100 //cm
+#define DISTANZA_RILEVAZIONE 200 //cm
 #define DISTANZA_ATTIVAZIONE 8 //cm
-#define DIFFERENZA_LUCE 80 //todo
+#define DIFFERENZA_LUCE 60 //todo
 #define PERIODO_DI_GRAZIA 20 //s
 #define SUONA_PER 20 //s
 
@@ -18,12 +18,14 @@
 #define MQTTalive 120
 #define MQTTretry 10
 #define MQTTqos 2
+#define esp8266alive 40
 #define timeout_check	500
 #define timeout_send	5000
 
 #define SECOND 1000000
 
 #define rumorePin 2
+#define resetPin 3
 #define buzzPin 4
 #define alarmPin 5
 #define echoPin 6
@@ -50,6 +52,7 @@ unsigned int skip = 0;
 unsigned long epoch = 0;
 unsigned long lastEpoch = 0;
 unsigned int lastPhoto;
+unsigned long lastAliveCheck;
 
 char in_buffer[buffer_l + 1];
 char cb[1];
@@ -62,10 +65,16 @@ void onMessage(String topic, String message) {
     setLed(message);
     mqttPublish(String(MQTTid) + "/Led", message, 1);    
   } else if (topic == String(MQTTid) + "/Allarme/c") {
-    if (message == "1" && !alarmOn)
+    if (message == "1" && !alarmOn) {
       abilitaAllarme(true);
-    else if (message == "0" && alarmOn)
+    } else if (message == "0" && alarmOn) {
       disabilitaAllarme();
+    } else if (message == "2") {
+      if (alarmOn)
+        disabilitaAllarme();
+      else
+        abilitaAllarme(true);      
+    }
   } else if (topic == "time") {
       epoch = strtoul(&message[0], NULL, 0);
       lastEpoch = millis() / 1000;
@@ -84,6 +93,12 @@ void onDisconnected() {
 }
 
 void checkComm() {
+        if (millis() - lastAliveCheck > esp8266alive * 2) {
+          pinMode(resetPin, OUTPUT);
+          delay(10);
+          pinMode(resetPin, INPUT);
+          lastAliveCheck = millis();
+        }
 	if (Serial.find("[(")) {
 		Serial.readBytes(cb, 1);
 		if (cb[0] == 'r') {
@@ -91,8 +106,11 @@ void checkComm() {
 			if (connected) {
 				connected = false;
 				onDisconnected();
-			}			
-			Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");		
+			}
+                        Serial.println("startAlive(\"" + String(esp8266alive) + "\")");
+			Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
+                } else if (cb[0] == 'a') {
+                        lastAliveCheck = millis();
 		} else if (cb[0] == 'w') {
 			//wifi connected
 			Serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
@@ -124,22 +142,30 @@ void checkComm() {
 
 void mqttPublish(String topic, String message, unsigned int retain) {
   	success = false;
+        Serial.setTimeout(timeout_send);
         while (!success) {
-        	Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");
-        	Serial.setTimeout(timeout_send);
+                if (!connected) {
+                  success = true;
+                  break;
+                }
+        	Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");        	
         	checkComm();
-        	Serial.setTimeout(timeout_check);
         }
+        Serial.setTimeout(timeout_check);        
 }
 
 void mqttSubscribe(String topic) {
 	success = false;
+        Serial.setTimeout(timeout_send);
         while(!success) {
+                if (!connected) {
+                  success = true;
+                  break;
+                }
 	        Serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
-        	Serial.setTimeout(timeout_send);
 	        checkComm();
-        	Serial.setTimeout(timeout_check);
         }
+        Serial.setTimeout(timeout_check);        
 }
 
 // #################### allarme ####################
@@ -211,6 +237,8 @@ void setup() {
   Serial.begin(9600);
   Serial.println("print(\"arduino ready\")");
   Serial.setTimeout(timeout_check);
+
+  lastAliveCheck = millis();
   
   while(!connected)
     checkComm();
