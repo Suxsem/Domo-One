@@ -7,7 +7,6 @@
 #define PERIODO_DI_GRAZIA 20 //s
 #define SUONA_PER 20 //s
 
-#define buffer_l 50
 #define APssid "***"
 #define APpsw "***"
 #define MQTTid "DomoOne"
@@ -16,13 +15,9 @@
 #define MQTTuser "***"
 #define MQTTpsw "***"
 #define MQTTalive 120
-#define MQTTretry 10
+#define MQTTretry 20
 #define MQTTqos 2
 #define esp8266alive 40
-#define timeout_check	500
-#define timeout_send	5000
-
-#define SECOND 1000000
 
 #define rumorePin 2
 #define buzzPin 4
@@ -36,7 +31,7 @@
 #define triggerPin 12
 #define photoPin A0
 #define audioPin A1
-#define resetPin A5
+#define esp8266reset A5
 
 dht DHT;
 SimpleTimer timer;
@@ -52,11 +47,6 @@ unsigned int skip = 0;
 unsigned long epoch = 0;
 unsigned long lastEpoch = 0;
 unsigned int lastPhoto;
-unsigned long lastAliveCheck;
-
-char in_buffer[buffer_l + 1];
-char cb[1];
-boolean success;
 
 // #################### esp8266 ####################
 
@@ -92,80 +82,89 @@ void onDisconnected() {
   digitalWrite(statusPin, LOW);
 }
 
+#define buffer_l 50
+#define replyTimeout 5000
+char in_buffer[buffer_l + 1];
+char cb[1];
+boolean success;
+boolean messageQueued = false;
+unsigned long lastAliveCheck = 0;
 void checkComm() {
-        if (millis() - lastAliveCheck > esp8266alive * 2) {
-          pinMode(resetPin, OUTPUT);
-          delay(10);
-          pinMode(resetPin, INPUT);
-          lastAliveCheck = millis();
+    if (millis() - lastAliveCheck > esp8266alive * 2000UL || lastAliveCheck == 0) {
+        pinMode(esp8266reset, OUTPUT);
+        delay(50);
+        pinMode(esp8266reset, INPUT);
+        lastAliveCheck = millis();
+        connected = false;        
+    }
+    if (Serial.find("[(")) {
+        Serial.readBytes(cb, 1);
+        if (cb[0] == 'r') {
+            //ready
+            if (connected) {
+                connected = false;
+                onDisconnected();
+            }
+            lastAliveCheck = millis();            
+            Serial.println("startAlive(" + String(esp8266alive) + ")");         
+            Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
+        } else if (cb[0] == 'a') {
+            lastAliveCheck = millis();
+            checkComm();
+        } else if (cb[0] == 'w') {
+            //wifi connected
+            Serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
+                            + "\", \"" + String(MQTTpsw) + "\", " + MQTTalive + ", " + MQTTretry + ")");        
+        } else if (cb[0] == 'c') {
+            //mqtt connected
+            connected = true;
+            onConnected();
+        } else if (cb[0] == 'd') {
+            //disconnected
+            connected = false;
+            onDisconnected();
+        } else if (cb[0] == 'm') {
+            //new message
+            if (messageQueued)
+                return;
+            messageQueued = true;
+            memset(in_buffer, 0, sizeof(in_buffer));
+            Serial.readBytesUntil('|', in_buffer, buffer_l);
+            String topic = String(in_buffer);
+            memset(in_buffer, 0, sizeof(in_buffer));
+            Serial.readBytesUntil('|', in_buffer, buffer_l);
+            String message = String(in_buffer);
+            waitForSuccess();
+            onMessage(topic, message);
+            messageQueued = false;
+        } else if (cb[0] == 'p' || cb[0] == 's') {
+            success = true;
         }
-	if (Serial.find("[(")) {
-		Serial.readBytes(cb, 1);
-		if (cb[0] == 'r') {
-			//ready
-			if (connected) {
-				connected = false;
-				onDisconnected();
-			}
-                        Serial.println("startAlive(\"" + String(esp8266alive) + "\")");
-			Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
-                } else if (cb[0] == 'a') {
-                        lastAliveCheck = millis();
-		} else if (cb[0] == 'w') {
-			//wifi connected
-			Serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
-							+ "\", \"" + String(MQTTpsw) + "\", " + MQTTalive + ", " + MQTTretry + ")");		
-		} else if (cb[0] == 'c') {
-			//mqtt connected
-			connected = true;
-			onConnected();
-		} else if (cb[0] == 'd') {
-			//disconnected
-			connected = false;
-			onDisconnected();
-		} else if (cb[0] == 'm') {
-			//new message
-			memset(in_buffer, 0, sizeof(in_buffer));
-			Serial.readBytesUntil('|', in_buffer, buffer_l);
-			String topic = String(in_buffer);
-			memset(in_buffer, 0, sizeof(in_buffer));
-			Serial.readBytesUntil('|', in_buffer, buffer_l);
-			String message = String(in_buffer);
-                        while(!success)
-                          checkComm();
-			onMessage(topic, message);
-		} else if (cb[0] == 'p' || cb[0] == 's') {
-			success = true;
-		}
-	}
+    }
 }
-
+void waitForSuccess() {
+    unsigned long started = millis();
+    while (!success) {
+        if (!connected || millis() - started > replyTimeout) {
+            success = true;
+            break;
+        }
+        checkComm();
+    }
+}
 void mqttPublish(String topic, String message, unsigned int retain) {
-  	success = false;
-        Serial.setTimeout(timeout_send);
-        while (!success) {
-                if (!connected) {
-                  success = true;
-                  break;
-                }
-        	Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");        	
-        	checkComm();
-        }
-        Serial.setTimeout(timeout_check);        
+    if (!connected)
+        return;
+    success = false;
+    Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");                
+    waitForSuccess();
 }
-
 void mqttSubscribe(String topic) {
-	success = false;
-        Serial.setTimeout(timeout_send);
-        while(!success) {
-                if (!connected) {
-                  success = true;
-                  break;
-                }
-	        Serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
-	        checkComm();
-        }
-        Serial.setTimeout(timeout_check);        
+    if (!connected)
+        return;
+    success = false;
+    Serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
+    waitForSuccess();
 }
 
 // #################### allarme ####################
@@ -176,7 +175,7 @@ void abilitaAllarme(boolean now) {
   if (now)
     attivaAllarme();
   else
-    timer.setTimeout(PERIODO_DI_GRAZIA * 1000, attivaAllarme);
+    timer.setTimeout(PERIODO_DI_GRAZIA * 1000UL, attivaAllarme);
   digitalWrite(alarmPin, HIGH);
   mqttPublish(String(MQTTid) + "/Allarme", "1", 1);
 }
@@ -236,9 +235,7 @@ void rilevaRumore() {
 void setup() {
   Serial.begin(9600);
   Serial.println("print(\"arduino ready\")");
-  Serial.setTimeout(timeout_check);
-
-  lastAliveCheck = millis();
+  Serial.setTimeout(500);
   
   while(!connected)
     checkComm();
@@ -327,7 +324,7 @@ void loop() {
           mqttPublish(String(MQTTid) + "/Motivo", "rumore", 0);          
       } //todo fine remove
       alarmScattato = true;
-      timer.setTimeout(SUONA_PER * 1000, silenziaAllarme);
+      timer.setTimeout(SUONA_PER * 1000UL, silenziaAllarme);
     }
   } else if (dist >= DISTANZA_RILEVAZIONE
       && abs(absTemp) <= DIFFERENZA_LUCE
