@@ -36,17 +36,18 @@
 dht DHT;
 SimpleTimer timer;
 
-unsigned int touchCount = 0;
+byte touchCount = 0;
 boolean alarmOn = false;
 boolean alarmScattato = false;
 boolean alarmInserito = false;
 volatile boolean rumoreRilevato = false;
 boolean movimentoRilevato = false;
 boolean connected = false;
-unsigned int skip = 0;
+byte skip = 0;
 unsigned long epoch = 0;
 unsigned long lastEpoch = 0;
 unsigned int lastPhoto;
+char lastLed[7] = "000000";
 
 // #################### esp8266 ####################
 
@@ -76,6 +77,8 @@ void onConnected() {
   mqttSubscribe(String(MQTTid) + "/Led/c");
   mqttSubscribe(String(MQTTid) + "/Allarme/c");
   mqttSubscribe("time");
+  mqttPublish(String(MQTTid) + "/Allarme", String(alarmOn), 1);
+  mqttPublish(String(MQTTid) + "/Led", lastLed, 1);
 }
 
 void onDisconnected() {  
@@ -106,15 +109,18 @@ void checkComm() {
                 onDisconnected();
             }
             lastAliveCheck = millis();            
-            Serial.println("startAlive(" + String(esp8266alive) + ")");         
+            Serial.println("startAlive(" + String(esp8266alive) + ")");
+            Serial.flush();
             Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
+            Serial.flush();
         } else if (cb[0] == 'a') {
             lastAliveCheck = millis();
             checkComm();
         } else if (cb[0] == 'w') {
             //wifi connected
             Serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
-                            + "\", \"" + String(MQTTpsw) + "\", " + MQTTalive + ", " + MQTTretry + ")");        
+                            + "\", \"" + String(MQTTpsw) + "\", " + MQTTalive + ", " + MQTTretry + ")");
+            Serial.flush();
         } else if (cb[0] == 'c') {
             //mqtt connected
             connected = true;
@@ -152,11 +158,12 @@ void waitForSuccess() {
         checkComm();
     }
 }
-void mqttPublish(String topic, String message, unsigned int retain) {
+void mqttPublish(String topic, String message, byte retain) {
     if (!connected)
         return;
     success = false;
     Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");                
+    Serial.flush();
     waitForSuccess();
 }
 void mqttSubscribe(String topic) {
@@ -164,6 +171,7 @@ void mqttSubscribe(String topic) {
         return;
     success = false;
     Serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
+    Serial.flush();
     waitForSuccess();
 }
 
@@ -202,7 +210,7 @@ void silenziaAllarme() {
 
 #define R 31.8975139158 //https://diarmuid.ie/blog/post/pwm-exponential-led-fading-on-arduino-or-other-platforms
 void setLed(String mRgb) {
-  // Convert it to long
+  // Convert it to long 
   long number = strtol(&mRgb[0], NULL, 16);  
   // Split them up into r, g, b values
   int r = number >> 16;
@@ -211,6 +219,7 @@ void setLed(String mRgb) {
   analogWrite(rgbrPin, pow (2, (r / R)) - 1);
   analogWrite(rgbgPin, pow (2, (g / R)) - 1);
   analogWrite(rgbbPin, pow (2, (b / R)) - 1);
+  mRgb.toCharArray(lastLed, 7);
 }
 
 void faiBeep(unsigned int millis) {
@@ -234,14 +243,10 @@ void rilevaRumore() {
 
 void setup() {
   Serial.begin(9600);
-  Serial.println("print(\"arduino ready\")");
   Serial.setTimeout(500);
   
   while(!connected)
-    checkComm();
-    
-  mqttPublish(String(MQTTid) + "/Led", "000000", 1);
-  mqttPublish(String(MQTTid) + "/Allarme", "0", 1);  
+    checkComm();    
 
   pinMode(buzzPin, OUTPUT);
   pinMode(statusPin, OUTPUT);
