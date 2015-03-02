@@ -18,7 +18,7 @@
 #define MQTTretry 20
 #define MQTTqos 2
 #define esp8266alive 40
-#define esp8266Serial Serial
+#define esp8266serial Serial
 
 #define rumorePin 2
 #define buzzPin 4
@@ -100,8 +100,8 @@ void checkComm() {
         lastAliveCheck = millis();
         connected = false;        
     }
-    if (esp8266Serial.find("[(")) {
-        esp8266Serial.readBytes(cb, 1);
+    if (esp8266serial.find("[(")) {
+        esp8266serial.readBytes(cb, 1);
         if (cb[0] == 'r') {
             //ready
             if (connected) {
@@ -109,18 +109,18 @@ void checkComm() {
                 onDisconnected();
             }
             lastAliveCheck = millis();            
-            esp8266Serial.println("startAlive(" + String(esp8266alive) + ")");
-            esp8266Serial.flush();
-            esp8266Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
-            esp8266Serial.flush();
+            esp8266serial.println("startAlive(" + String(esp8266alive) + ")");
+            esp8266serial.flush();
+            esp8266serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
+            esp8266serial.flush();
         } else if (cb[0] == 'a') {
             lastAliveCheck = millis();
             checkComm();
         } else if (cb[0] == 'w') {
             //wifi connected
-            esp8266Serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
+            esp8266serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
                             + "\", \"" + String(MQTTpsw) + "\", " + MQTTalive + ", " + MQTTretry + ")");
-            esp8266Serial.flush();
+            esp8266serial.flush();
         } else if (cb[0] == 'c') {
             //mqtt connected
             connected = true;
@@ -136,10 +136,10 @@ void checkComm() {
             if (!success)
                 messageQueued = true;
             memset(in_buffer, 0, sizeof(in_buffer));
-            esp8266Serial.readBytesUntil('|', in_buffer, buffer_l);
+            esp8266serial.readBytesUntil('|', in_buffer, buffer_l);
             String topic = String(in_buffer);
             memset(in_buffer, 0, sizeof(in_buffer));
-            esp8266Serial.readBytesUntil('|', in_buffer, buffer_l);
+            esp8266serial.readBytesUntil('|', in_buffer, buffer_l);
             String message = String(in_buffer);
             waitForSuccess();
             onMessage(topic, message);
@@ -163,16 +163,16 @@ void mqttPublish(String topic, String message, byte retain) {
     if (!connected)
         return;
     success = false;
-    esp8266Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");                
-    esp8266Serial.flush();
+    esp8266serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");                
+    esp8266serial.flush();
     waitForSuccess();
 }
 void mqttSubscribe(String topic) {
     if (!connected)
         return;
     success = false;
-    esp8266Serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
-    esp8266Serial.flush();
+    esp8266serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
+    esp8266serial.flush();
     waitForSuccess();
 }
 
@@ -246,8 +246,8 @@ void rilevaRumore() {
 // #################### setup e loop ####################
 
 void setup() {
-  esp8266Serial.begin(9600);
-  esp8266Serial.setTimeout(500);
+  esp8266serial.begin(9600);
+  esp8266serial.setTimeout(500);
   
   while(!connected)
     checkComm();    
