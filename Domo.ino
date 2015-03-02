@@ -18,6 +18,7 @@
 #define MQTTretry 20
 #define MQTTqos 2
 #define esp8266alive 40
+#define esp8266Serial Serial
 
 #define rumorePin 2
 #define buzzPin 4
@@ -54,7 +55,6 @@ char lastLed[7] = "000000";
 void onMessage(String topic, String message) {
   if (topic == String(MQTTid) + "/Led/c") {
     setLed(message);
-    mqttPublish(String(MQTTid) + "/Led", message, 1);    
   } else if (topic == String(MQTTid) + "/Allarme/c") {
     if (message == "1" && !alarmOn) {
       abilitaAllarme(true);
@@ -100,8 +100,8 @@ void checkComm() {
         lastAliveCheck = millis();
         connected = false;        
     }
-    if (Serial.find("[(")) {
-        Serial.readBytes(cb, 1);
+    if (esp8266Serial.find("[(")) {
+        esp8266Serial.readBytes(cb, 1);
         if (cb[0] == 'r') {
             //ready
             if (connected) {
@@ -109,18 +109,18 @@ void checkComm() {
                 onDisconnected();
             }
             lastAliveCheck = millis();            
-            Serial.println("startAlive(" + String(esp8266alive) + ")");
-            Serial.flush();
-            Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
-            Serial.flush();
+            esp8266Serial.println("startAlive(" + String(esp8266alive) + ")");
+            esp8266Serial.flush();
+            esp8266Serial.println("connectAP(\"" + String(APssid) + "\", \"" + String(APpsw) + "\")");
+            esp8266Serial.flush();
         } else if (cb[0] == 'a') {
             lastAliveCheck = millis();
             checkComm();
         } else if (cb[0] == 'w') {
             //wifi connected
-            Serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
+            esp8266Serial.println("mqttInit(\"" + String(MQTTid) + "\", \"" + String(MQTTip) + "\", " + MQTTport + ", \"" + String(MQTTuser)
                             + "\", \"" + String(MQTTpsw) + "\", " + MQTTalive + ", " + MQTTretry + ")");
-            Serial.flush();
+            esp8266Serial.flush();
         } else if (cb[0] == 'c') {
             //mqtt connected
             connected = true;
@@ -133,12 +133,13 @@ void checkComm() {
             //new message
             if (messageQueued)
                 return;
-            messageQueued = true;
+            if (!success)
+                messageQueued = true;
             memset(in_buffer, 0, sizeof(in_buffer));
-            Serial.readBytesUntil('|', in_buffer, buffer_l);
+            esp8266Serial.readBytesUntil('|', in_buffer, buffer_l);
             String topic = String(in_buffer);
             memset(in_buffer, 0, sizeof(in_buffer));
-            Serial.readBytesUntil('|', in_buffer, buffer_l);
+            esp8266Serial.readBytesUntil('|', in_buffer, buffer_l);
             String message = String(in_buffer);
             waitForSuccess();
             onMessage(topic, message);
@@ -162,16 +163,16 @@ void mqttPublish(String topic, String message, byte retain) {
     if (!connected)
         return;
     success = false;
-    Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");                
-    Serial.flush();
+    esp8266Serial.println("mqttPublish(\"" + topic + "\", \"" + message + "\",  " + MQTTqos + ", " + retain + ")");                
+    esp8266Serial.flush();
     waitForSuccess();
 }
 void mqttSubscribe(String topic) {
     if (!connected)
         return;
     success = false;
-    Serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
-    Serial.flush();
+    esp8266Serial.println("mqttSubscribe(\"" + String(topic) + "\", " + MQTTqos + ")");
+    esp8266Serial.flush();
     waitForSuccess();
 }
 
@@ -185,6 +186,7 @@ void abilitaAllarme(boolean now) {
   else
     timer.setTimeout(PERIODO_DI_GRAZIA * 1000UL, attivaAllarme);
   digitalWrite(alarmPin, HIGH);
+  setLed("000000");
   mqttPublish(String(MQTTid) + "/Allarme", "1", 1);
 }
 
@@ -219,7 +221,9 @@ void setLed(String mRgb) {
   analogWrite(rgbrPin, pow (2, (r / R)) - 1);
   analogWrite(rgbgPin, pow (2, (g / R)) - 1);
   analogWrite(rgbbPin, pow (2, (b / R)) - 1);
+  lastPhoto = analogRead(photoPin);  
   mRgb.toCharArray(lastLed, 7);
+  mqttPublish(String(MQTTid) + "/Led", mRgb, 1);  
 }
 
 void faiBeep(unsigned int millis) {
@@ -242,8 +246,8 @@ void rilevaRumore() {
 // #################### setup e loop ####################
 
 void setup() {
-  Serial.begin(9600);
-  Serial.setTimeout(500);
+  esp8266Serial.begin(9600);
+  esp8266Serial.setTimeout(500);
   
   while(!connected)
     checkComm();    
