@@ -1,8 +1,11 @@
 #include <dht.h>
 #include <SimpleTimer.h>
+#include <NewPing.h>
 
 #define DISTANZA_RILEVAZIONE 200 //cm
 #define DISTANZA_ATTIVAZIONE 8 //cm
+#define DISTANZA_MAX 250 //cm
+//#define RIPETI_DISTANZA 3
 #define DIFFERENZA_LUCE 60 //todo
 #define PERIODO_DI_GRAZIA 20 //s
 #define SUONA_PER 20 //s
@@ -36,6 +39,7 @@
 
 dht DHT;
 SimpleTimer timer;
+NewPing sonar(triggerPin, echoPin, DISTANZA_MAX);
 
 byte touchCount = 0;
 boolean alarmOn = false;
@@ -221,6 +225,7 @@ void setLed(String mRgb) {
   analogWrite(rgbrPin, pow (2, (r / R)) - 1);
   analogWrite(rgbgPin, pow (2, (g / R)) - 1);
   analogWrite(rgbbPin, pow (2, (b / R)) - 1);
+  delay(100);
   lastPhoto = analogRead(photoPin);  
   mRgb.toCharArray(lastLed, 7);
   mqttPublish(String(MQTTid) + "/Led", mRgb, 1);  
@@ -231,6 +236,7 @@ void faiBeep(unsigned int millis) {
   digitalWrite(buzzPin, HIGH);
   delay(millis);
   digitalWrite(buzzPin, LOW);
+  delay(20);
   attachInterrupt(0, rilevaRumore, FALLING);
 }
 
@@ -239,7 +245,6 @@ unsigned long tempo() {
 }
 
 void rilevaRumore() {
-  digitalWrite(statusPin, HIGH); //todo remove
   rumoreRilevato = true;
 }
 
@@ -258,7 +263,6 @@ void setup() {
   pinMode(rgbrPin, OUTPUT);
   pinMode(rgbgPin, OUTPUT);
   pinMode(rgbbPin, OUTPUT);
-  pinMode(triggerPin, OUTPUT);
   
   lastPhoto = analogRead(photoPin);
   faiBeep(10); //contiene attachInterrupt per rilevare il rumore
@@ -273,12 +277,9 @@ void loop() {
   while(!connected);
    
   //misuro la distanza
-  digitalWrite(triggerPin, LOW);
-  delayMicroseconds(5);  
-  digitalWrite(triggerPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(triggerPin, LOW);  
-  unsigned int dist = pulseIn(echoPin, HIGH, 800000) / 58; //todo vedere se si può abbassare
+  //  unsigned int dist = sonar.convert_cm(sonar.ping_median(RIPETI_DISTANZA));
+  unsigned int dist = sonar.ping_cm();
+
   if (dist == 0)
     dist = 999;
     
@@ -314,7 +315,6 @@ void loop() {
   int absTemp = photo - lastPhoto; //abs() non può contenere operazioni all'interno
   boolean mRumoreRilevato = rumoreRilevato;    
   rumoreRilevato = false;
-  digitalWrite(statusPin, LOW); //todo togliere
   
   if ((dist < DISTANZA_RILEVAZIONE
       || abs(absTemp) > DIFFERENZA_LUCE
@@ -326,7 +326,7 @@ void loop() {
       if (connected) {
         mqttPublish(String(MQTTid) + "/Scattato", "1", 0);
         if (dist < DISTANZA_RILEVAZIONE) //todo remove
-          mqttPublish(String(MQTTid) + "/Motivo", "distanza", 0);
+          mqttPublish(String(MQTTid) + "/Motivo", "distanza: " + String(dist), 0);
         if (abs(absTemp) > DIFFERENZA_LUCE)
           mqttPublish(String(MQTTid) + "/Motivo", "luce", 0);
         if (mRumoreRilevato)
@@ -345,7 +345,7 @@ void loop() {
   lastPhoto = photo;
   
   if (alarmScattato)
-    //faiBeep(500);
+    faiBeep(500);
     delay(500); //todo togliere commento
   
   if (skip % 10 == 0 && connected) { //todo trovare skip giusto
